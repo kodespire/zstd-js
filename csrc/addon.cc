@@ -247,21 +247,31 @@ Napi::Value FrameContentSize(const Napi::CallbackInfo& info) {
 
 // Shared by CStream and DStream: one operation at a time, and the JS object
 // stays referenced while a worker uses the native context, so the garbage
-// collector cannot free the context underneath it.
+// collector cannot free the context underneath it. T provides FreeContext().
 template <typename T>
 class StreamBase : public Napi::ObjectWrap<T> {
  public:
   using Napi::ObjectWrap<T>::ObjectWrap;
 
   void Acquire(Napi::Env env) {
-    if (busy_) throw MakeError(env, ZJS_ERR_ARG, "stream is busy: wait for the previous push to finish");
     if (closed_) throw MakeError(env, ZJS_ERR_ARG, "stream is closed");
+    if (busy_) throw MakeError(env, ZJS_ERR_ARG, "stream is busy: wait for the previous push to finish");
     busy_ = true;
   }
-  void Release() { busy_ = false; }
-  bool busy() const { return busy_; }
+  void Release() {
+    busy_ = false;
+    if (closed_) static_cast<T*>(this)->FreeContext();
+  }
 
  protected:
+  // close(): frees the context now, or as soon as an in-flight push finishes
+  // (a stream cancelled mid-push, e.g. an aborted fetch, must not throw).
+  Napi::Value Close(const Napi::CallbackInfo& info) {
+    closed_ = true;
+    if (!busy_) static_cast<T*>(this)->FreeContext();
+    return info.Env().Undefined();
+  }
+
   bool busy_ = false;
   bool closed_ = false;
 };
@@ -351,12 +361,10 @@ class CStream : public StreamBase<CStream> {
     return promise;
   }
 
-  Napi::Value Close(const Napi::CallbackInfo& info) {
-    if (busy_) throw MakeError(info.Env(), ZJS_ERR_ARG, "stream is busy: wait for the previous push to finish");
+  friend class StreamBase<CStream>;
+  void FreeContext() {
     zjs_cstream_free(stream_);
     stream_ = nullptr;
-    closed_ = true;
-    return info.Env().Undefined();
   }
 
   zjs_cstream* stream_ = nullptr;
@@ -427,12 +435,10 @@ class DStream : public StreamBase<DStream> {
     return info.Env().Undefined();
   }
 
-  Napi::Value Close(const Napi::CallbackInfo& info) {
-    if (busy_) throw MakeError(info.Env(), ZJS_ERR_ARG, "stream is busy: wait for the previous push to finish");
+  friend class StreamBase<DStream>;
+  void FreeContext() {
     zjs_dstream_free(stream_);
     stream_ = nullptr;
-    closed_ = true;
-    return info.Env().Undefined();
   }
 
   zjs_dstream* stream_ = nullptr;

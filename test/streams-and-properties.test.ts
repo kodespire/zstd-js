@@ -58,6 +58,26 @@ describe.each(backends)('%s backend: streams', (_name, z) => {
     expect(await pipeChunks(z.createDecompressStream({ dictionary }), frame, () => 100)).toEqual(src);
   });
 
+  it('cancelling a stream while a chunk is being processed is clean', async () => {
+    const big = textBytes(8 << 20, 31);
+    const frame = z.compressSync(big, 1);
+    const cases: [TransformStream<Uint8Array, Uint8Array>, Uint8Array][] = [
+      [z.createCompressStream(19), big],
+      [z.createDecompressStream(), frame],
+    ];
+    for (const [stream, chunk] of cases) {
+      // transform() only runs once the readable side has demand, so read first.
+      const reader = stream.readable.getReader();
+      const read = reader.read().catch(() => {});
+      const pending = stream.writable.getWriter().write(chunk).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 5)); // the push is now in flight
+      await expect(reader.cancel('stop')).resolves.toBeUndefined();
+      await Promise.all([read, pending]);
+    }
+    // The backend still works afterwards.
+    expect(z.decompressSync(z.compressSync('after cancel'))).toEqual(new TextEncoder().encode('after cancel'));
+  });
+
   it('many concurrent async calls return the right results', async () => {
     const inputs = Array.from({ length: 64 }, (_, i) => textBytes(20_000 + i * 997, i));
     const frames = await Promise.all(inputs.map((src, i) => z.compress(src, (i % 19) + 1)));

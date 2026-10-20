@@ -3,7 +3,8 @@
 # the full test suite against the new version.
 #
 # Needs "Allow GitHub Actions to create and approve pull requests" enabled in
-# Settings > Actions > General.
+# Settings > Actions > General. Pull requests opened with GITHUB_TOKEN do not
+# trigger CI on their own, so the job starts the CI workflow on the branch itself.
 name: Update zstd
 
 on:
@@ -12,6 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -29,12 +31,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           latest="$(gh release view -R facebook/zstd --json tagName -q .tagName)"
-          current="$(git -C deps/zstd describe --tags --exact-match 2>/dev/null || echo unknown)"
+          latest_sha="$(gh api "repos/facebook/zstd/commits/$latest" --jq .sha)"
+          current_sha="$(git -C deps/zstd rev-parse HEAD)"
+          current="v$(sed -n "s/export const ZSTD_VERSION = '\(.*\)';/\1/p" src/version.ts)"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "current=$current" >> "$GITHUB_OUTPUT"
-          echo "pinned: $current, latest: $latest"
+          echo "outdated=$([ "$latest_sha" = "$current_sha" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+          echo "pinned: $current ($current_sha), latest: $latest ($latest_sha)"
       - name: Open a pull request
-        if: steps.check.outputs.latest != steps.check.outputs.current
+        if: steps.check.outputs.outdated == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           LATEST: ${{ steps.check.outputs.latest }}
@@ -54,4 +59,5 @@ jobs:
           git add deps/zstd src/version.ts
           git commit -m "Update zstd to $LATEST"
           git push origin "$branch"
+          gh workflow run ci.yml --ref "$branch"
           gh pr create --title "Update zstd to $LATEST" --body "Moves deps/zstd from $CURRENT to [$LATEST](https://github.com/facebook/zstd/releases/tag/$LATEST). CI runs the full suite against it. Check the release notes for changes to level ranges or defaults (src/version.ts) before merging."

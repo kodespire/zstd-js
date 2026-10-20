@@ -86,7 +86,7 @@ jobs:
           BROWSERS: chromium,firefox,webkit
 
   runtimes:
-    name: Installed package on Node, Bun and Deno
+    name: Installed package on Node, Bun, Deno and Workers
     needs: wasm
     runs-on: ubuntu-latest
     steps:
@@ -127,3 +127,9 @@ jobs:
       - name: Deno
         working-directory: consumer
         run: EXPECT_BACKEND=wasm deno run -A --node-modules-dir=manual smoke.mjs
+      - name: Cloudflare Workers (wrangler dev, workerd)
+        working-directory: consumer
+        run: |
+          cp ../test/workerd/worker.mjs ../test/workerd/wrangler.toml ../test/workerd/run.mjs .
+          npm install --no-audit --no-fund wrangler@4
+          node run.mjs

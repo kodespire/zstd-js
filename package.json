@@ -23,7 +23,7 @@
   "sideEffects": false,
   "gypfile": false,
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "exports": {
     ".": {

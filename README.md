@@ -142,11 +142,11 @@ An unknown option name throws a `TypeError`. A typo like `{ compressionLevel: 19
 
 | Runtime | Backend | Tested in CI |
 | --- | --- | --- |
-| Node.js 22, 24, 26 | native | Linux x64/arm64, macOS, Windows |
+| Node.js 22.12+, 24, 26 | native | Linux x64/arm64, macOS, Windows |
 | Bun | native | Linux |
 | Deno 2 | WebAssembly | Linux |
 | Chromium, Firefox, WebKit | WebAssembly | Playwright, through Vite |
-| Cloudflare Workers (`workerd` condition) | WebAssembly | not yet |
+| Cloudflare Workers (`workerd` condition) | WebAssembly | `wrangler dev` (workerd) |
 
 Prebuilt native binaries cover:
 - macOS arm64 and x64
