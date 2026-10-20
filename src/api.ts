@@ -7,6 +7,7 @@ import {
 import {
   MODE_CONTINUE,
   MODE_END,
+  type Backend,
   type BackendKind,
   type BackendProvider,
   type Bytes,
@@ -28,12 +29,25 @@ export function isZstdFrame(data: Bytes): boolean {
 }
 
 export function createApi(provider: BackendProvider) {
+  // Starts `call` with the caller's bytes as they are right now. A loaded backend is
+  // called immediately, and both backends copy their inputs before returning. While
+  // the backend is still loading, the inputs are copied first (new Uint8Array copies;
+  // Buffer#slice would return a view), so changes made after the call are not seen.
+  function withBackend<T>(
+    inputs: (Uint8Array | null)[],
+    call: (backend: Backend, inputs: (Uint8Array | null)[]) => Promise<T>,
+  ): Promise<T> {
+    const backend = provider.ready();
+    if (backend) return call(backend, inputs);
+    const copies = inputs.map((input) => input && new Uint8Array(input));
+    return provider.get().then((loaded) => call(loaded, copies));
+  }
+
   /** Compresses `data` into a single zstd frame. Strings are encoded as UTF-8. */
   async function compress(data: Bytes | string, options?: CompressOptions | number): Promise<Uint8Array> {
     const o = resolveCompressOptions(options, 'compress');
-    const input = toInputBytes(data);
-    const backend = await provider.get();
-    return backend.compress(input, o.level, o.checksum, o.dictionary);
+    return withBackend([toInputBytes(data), o.dictionary], (backend, [input, dict]) =>
+      backend.compress(input!, o.level, o.checksum, dict!));
   }
 
   /** Synchronous `compress`. In browsers and edge runtimes, call `await init()` first. */
@@ -48,9 +62,8 @@ export function createApi(provider: BackendProvider) {
    */
   async function decompress(data: Bytes, options?: DecompressOptions): Promise<Uint8Array> {
     const o = resolveDecompressOptions(options, 'decompress');
-    const input = toBytes(data, 'data');
-    const backend = await provider.get();
-    return backend.decompress(input, o.dictionary, o.windowLogMax, o.maxOutputSize);
+    return withBackend([toBytes(data, 'data'), o.dictionary], (backend, [input, dict]) =>
+      backend.decompress(input!, dict!, o.windowLogMax, o.maxOutputSize));
   }
 
   /** Synchronous `decompress`. In browsers and edge runtimes, call `await init()` first. */
@@ -77,8 +90,10 @@ export function createApi(provider: BackendProvider) {
       handle = undefined;
     };
     return new TransformStream<Bytes, Uint8Array>({
-      async start() {
-        handle = (await provider.get()).createCStream(o.level, o.checksum, o.dictionary);
+      start() {
+        return withBackend([o.dictionary], async (backend, [dict]) => {
+          handle = backend.createCStream(o.level, o.checksum, dict!);
+        });
       },
       async transform(chunk, controller) {
         try {
@@ -113,8 +128,10 @@ export function createApi(provider: BackendProvider) {
       handle = undefined;
     };
     return new TransformStream<Bytes, Uint8Array>({
-      async start() {
-        handle = (await provider.get()).createDStream(o.dictionary, o.windowLogMax, o.maxOutputSize);
+      start() {
+        return withBackend([o.dictionary], async (backend, [dict]) => {
+          handle = backend.createDStream(dict!, o.windowLogMax, o.maxOutputSize);
+        });
       },
       async transform(chunk, controller) {
         try {
