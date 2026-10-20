@@ -129,6 +129,7 @@ jobs:
         run: EXPECT_BACKEND=wasm deno run -A --node-modules-dir=manual smoke.mjs
       - name: Cloudflare Workers (wrangler dev, workerd)
         working-directory: consumer
+        timeout-minutes: 5
         run: |
           cp ../test/workerd/worker.mjs ../test/workerd/wrangler.toml ../test/workerd/run.mjs .
           npm install --no-audit --no-fund wrangler@4
