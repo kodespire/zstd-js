@@ -1,3 +1,5 @@
+# The jobs are the shared workflows in kodespire/compression-js; WORKFLOWS.md
+# there documents the inputs.
 name: CI
 
 on:
@@ -15,122 +17,29 @@ concurrency:
 
 jobs:
   wasm:
-    name: Build WebAssembly
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: true
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - run: bash scripts/ci/setup-emsdk.sh
-      - run: source ~/emsdk/emsdk_env.sh && node scripts/build-wasm.mjs
-      - uses: actions/upload-artifact@v7
-        with:
-          name: wasm
-          path: out/wasm/zstd.wasm
-          if-no-files-found: error
+    uses: kodespire/compression-js/.github/workflows/build-wasm.yml@v1
+    with:
+      wasm-build: node scripts/build-wasm.mjs
+      wasm-artifact-path: out/wasm
 
   node:
-    name: Node ${{ matrix.node }} (${{ matrix.os }})
     needs: wasm
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
-        node: [22, 24, 26]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: true
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-      - uses: actions/download-artifact@v8
-        with:
-          name: wasm
-          path: out/wasm
-      - run: npm ci
-      - run: npm run build:native
-      - run: npm run build:ts
-      - name: Build the official zstd CLI for interop tests
-        if: runner.os != 'Windows'
-        run: node scripts/build-zstd-cli.mjs
-      - run: npm test
+    uses: kodespire/compression-js/.github/workflows/test-node.yml@v1
+    with:
+      wasm-artifact-path: out/wasm
+      cli-build: node scripts/build-zstd-cli.mjs
 
   browsers:
-    name: Browsers (Chromium, Firefox, WebKit)
     needs: wasm
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: true
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      - uses: actions/download-artifact@v8
-        with:
-          name: wasm
-          path: out/wasm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build:ts
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npx vitest run -c vitest.browser.config.ts
-        env:
-          BROWSERS: chromium,firefox,webkit
+    uses: kodespire/compression-js/.github/workflows/test-browsers.yml@v1
+    with:
+      wasm-artifact-path: out/wasm
 
   runtimes:
-    name: Installed package on Node, Bun, Deno and Workers
     needs: wasm
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: true
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      - uses: oven-sh/setup-bun@v2
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - uses: actions/download-artifact@v8
-        with:
-          name: wasm
-          path: out/wasm
-      - run: npm ci
-      - run: npm run build:ts
-      - run: bash scripts/ci/prebuild-linux.sh glibc
-      - name: Install the packed tarball into an empty project
-        run: |
-          npm pack
-          mkdir consumer && cd consumer
-          npm init -y > /dev/null
-          npm install --no-audit --no-fund ../kodespire-zstd-js-*.tgz
-          cp ../test/smoke/smoke.mjs .
-      - name: Node (native)
-        working-directory: consumer
-        run: EXPECT_BACKEND=native node smoke.mjs
-      - name: Node (forced WebAssembly)
-        working-directory: consumer
-        run: ZSTD_JS_BACKEND=wasm EXPECT_BACKEND=wasm node smoke.mjs
-      - name: Bun
-        working-directory: consumer
-        run: EXPECT_BACKEND=native bun smoke.mjs
-      - name: Deno
-        working-directory: consumer
-        run: EXPECT_BACKEND=wasm deno run -A --node-modules-dir=manual smoke.mjs
-      - name: Cloudflare Workers (wrangler dev, workerd)
-        working-directory: consumer
-        timeout-minutes: 5
-        run: |
-          cp ../test/workerd/worker.mjs ../test/workerd/wrangler.toml ../test/workerd/run.mjs .
-          npm install --no-audit --no-fund wrangler@4
-          node run.mjs
+    uses: kodespire/compression-js/.github/workflows/test-runtimes.yml@v1
+    with:
+      wasm-artifact-path: out/wasm
+      tarball-prefix: kodespire-zstd-js
+      smoke-script: test/smoke/smoke.mjs
+      backend-env: ZSTD_JS_BACKEND
