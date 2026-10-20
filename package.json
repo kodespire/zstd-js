@@ -1,6 +1,6 @@
 {
   "name": "@kodespire/zstd-js",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Zstandard compression for Node.js, Bun, Deno, browsers and edge runtimes. Native bindings to the official facebook/zstd library with a WebAssembly fallback.",
   "keywords": [
     "zstd",
