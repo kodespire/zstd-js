@@ -1,0 +1,70 @@
+// What `npm pack` publishes. React Native apps compile the native module from the
+// package, so it must carry the podspec, android/, cpp/ and every C source those
+// builds compile, and nothing else of the repo (the example app, build output).
+import { execFileSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const root = join(import.meta.dirname, '..');
+const { sources } = createRequire(import.meta.url)('../scripts/zstd-sources.cjs') as { sources(): string[] };
+
+const [pack] = JSON.parse(
+  execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+    cwd: root,
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  }),
+) as [{ files: { path: string; size: number }[] }];
+const files = pack.files.map((f) => f.path.replaceAll('\\', '/'));
+
+describe('npm package contents', () => {
+  it('includes the React Native build', () => {
+    for (const file of [
+      'KodespireZstd.podspec',
+      'react-native.config.js',
+      'ios/KodespireZstdModuleProvider.h',
+      'ios/KodespireZstdModuleProvider.mm',
+      'cpp/KodespireZstdModule.h',
+      'cpp/KodespireZstdModule.cpp',
+      'android/build.gradle',
+      'android/CMakeLists.txt',
+      'android/src/main/java/com/kodespire/zstd/KodespireZstdPackage.java',
+      'codegen/NativeKodespireZstd.ts',
+      'csrc/zjs.c',
+      'csrc/zjs.h',
+      'deps/zstd/LICENSE',
+      'dist/entry-react-native.js',
+    ]) {
+      expect(files).toContain(file);
+    }
+  });
+
+  it('includes every zstd source and header the native builds compile', () => {
+    for (const source of sources()) expect(files).toContain(source);
+    for (const dir of ['common', 'compress', 'decompress']) {
+      for (const name of readdirSync(join(root, 'deps', 'zstd', 'lib', dir)).filter((n) => n.endsWith('.h'))) {
+        expect(files).toContain(`deps/zstd/lib/${dir}/${name}`);
+      }
+    }
+    for (const header of ['zstd.h', 'zstd_errors.h']) expect(files).toContain(`deps/zstd/lib/${header}`);
+  });
+
+  it('leaves out the rest of the repo', () => {
+    for (const file of files) {
+      expect(file).not.toMatch(/^(example|test|scripts|src|out|build|\.github)\//);
+      expect(file).not.toMatch(/^android\/(build|\.cxx|\.gradle)\//);
+      expect(file).not.toMatch(/\.S$/); // zstd's x86-64 assembly: every build sets ZSTD_DISABLE_ASM
+    }
+    expect(files).not.toContain('binding.gyp');
+    expect(files).not.toContain('csrc/addon.cc');
+  });
+
+  it('keeps the React Native sources small', () => {
+    // Everything except the JavaScript build and the Node prebuilds, unpacked.
+    const native = pack.files.filter((f) => !/^(dist|prebuilds)\//.test(f.path.replaceAll('\\', '/')));
+    const bytes = native.reduce((n, f) => n + f.size, 0);
+    expect(bytes).toBeLessThan(2.5e6);
+  });
+});

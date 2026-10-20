@@ -1,7 +1,7 @@
 {
   "name": "@kodespire/zstd-js",
-  "version": "0.1.1",
-  "description": "Zstandard compression for Node.js, Bun, Deno, browsers and edge runtimes. Native bindings to the official facebook/zstd library with a WebAssembly fallback.",
+  "version": "0.2.0",
+  "description": "Zstandard compression for Node.js, Bun, Deno, browsers, edge runtimes and React Native. Native bindings to the official facebook/zstd library with a WebAssembly fallback.",
   "keywords": [
     "zstd",
     "zstandard",
@@ -9,7 +9,8 @@
     "decompression",
     "wasm",
     "napi",
-    "stream"
+    "stream",
+    "react-native"
   ],
   "license": "MIT",
   "author": "kodespire",
@@ -31,6 +32,7 @@
       "workerd": "./dist/entry-workerd.js",
       "deno": "./dist/entry-wasm.js",
       "browser": "./dist/entry-wasm.js",
+      "react-native": "./dist/entry-react-native.js",
       "node": "./dist/entry-node.js",
       "default": "./dist/entry-wasm.js"
     },
@@ -46,6 +48,7 @@
     "#load-wasm": {
       "types": "./dist/load-wasm-fetch.d.ts",
       "node": "./dist/load-wasm-node.js",
+      "react-native": "./dist/load-wasm-react-native.js",
       "default": "./dist/load-wasm-fetch.js"
     }
   },
@@ -53,7 +56,22 @@
   "files": [
     "dist",
     "prebuilds",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "cpp",
+    "csrc/zjs.c",
+    "csrc/zjs.h",
+    "ios",
+    "android/build.gradle",
+    "android/CMakeLists.txt",
+    "android/src",
+    "codegen",
+    "KodespireZstd.podspec",
+    "react-native.config.js",
+    "deps/zstd/LICENSE",
+    "deps/zstd/lib/*.h",
+    "deps/zstd/lib/common/*.[ch]",
+    "deps/zstd/lib/compress/*.[ch]",
+    "deps/zstd/lib/decompress/*.[ch]"
   ],
   "scripts": {
     "build": "npm run build:native && npm run build:wasm && npm run build:ts",
@@ -66,8 +84,29 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "codegenConfig": {
+    "name": "KodespireZstdSpec",
+    "type": "modules",
+    "jsSrcsDir": "codegen",
+    "android": {
+      "javaPackageName": "com.kodespire.zstd"
+    },
+    "ios": {
+      "modulesProvider": {
+        "KodespireZstd": "KodespireZstdModuleProvider"
+      }
+    }
+  },
   "dependencies": {
     "node-gyp-build": "^4.8.4"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.84"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
