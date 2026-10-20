@@ -27,7 +27,7 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/entry-wasm.d.ts",
+      "types": "./dist/public.d.ts",
       "workerd": "./dist/entry-workerd.js",
       "deno": "./dist/entry-wasm.js",
       "browser": "./dist/entry-wasm.js",
@@ -35,7 +35,7 @@
       "default": "./dist/entry-wasm.js"
     },
     "./wasm": {
-      "types": "./dist/entry-wasm.d.ts",
+      "types": "./dist/public.d.ts",
       "workerd": "./dist/entry-workerd.js",
       "default": "./dist/entry-wasm.js"
     },
@@ -49,7 +49,7 @@
       "default": "./dist/load-wasm-fetch.js"
     }
   },
-  "types": "./dist/entry-wasm.d.ts",
+  "types": "./dist/public.d.ts",
   "files": [
     "dist",
     "prebuilds",
@@ -62,7 +62,7 @@
     "build:ts": "node scripts/build-ts.mjs",
     "build:prebuilds": "prebuildify --napi --strip --target 22.0.0",
     "fixtures": "node scripts/make-fixtures.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },

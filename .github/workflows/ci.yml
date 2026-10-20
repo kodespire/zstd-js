@@ -78,6 +78,7 @@ jobs:
           name: wasm
           path: out/wasm
       - run: npm ci
+      - run: npm run typecheck
       - run: npm run build:ts
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npx vitest run -c vitest.browser.config.ts
