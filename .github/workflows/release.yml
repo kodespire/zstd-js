@@ -26,17 +26,17 @@ permissions:
 
 jobs:
   wasm:
-    uses: kodespire/compression-js/.github/workflows/build-wasm.yml@shared-workflows
+    uses: kodespire/compression-js/.github/workflows/build-wasm.yml@v1
     with:
       wasm-build: node scripts/build-wasm.mjs
       wasm-artifact-path: out/wasm
 
   prebuild:
-    uses: kodespire/compression-js/.github/workflows/prebuild.yml@shared-workflows
+    uses: kodespire/compression-js/.github/workflows/prebuild.yml@v1
 
   release:
     needs: [wasm, prebuild]
-    uses: kodespire/compression-js/.github/workflows/pack-verify-publish.yml@shared-workflows
+    uses: kodespire/compression-js/.github/workflows/pack-verify-publish.yml@v1
     permissions:
       contents: read
       id-token: write # npm trusted publishing and provenance
