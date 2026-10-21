@@ -6,8 +6,9 @@
 // Threading: synchronous methods run on the JS thread. Async methods copy their
 // inputs on the JS thread, run on a small worker pool, and settle their promise
 // back on the JS thread through the CallInvoker. Workers never touch JSI values:
-// they carry a promise id and plain bytes, so a reload or teardown while a job
-// is running leaves nothing dangling.
+// they carry a promise id and plain bytes, so a job that finishes after a reload
+// or teardown finds nothing to settle. The pending resolve/reject functions live
+// in the module, which React Native destroys before its runtime.
 
 #include "KodespireZstdModule.h"
 
@@ -122,11 +123,14 @@ jsi::Value MakeError(jsi::Runtime& rt, int code, const char* detail) {
   throw jsi::JSError(rt, MakeError(rt, code, detail));
 }
 
-[[noreturn]] void ThrowTypeError(jsi::Runtime& rt, const std::string& message) {
-  jsi::Value error = rt.global()
-                         .getPropertyAsFunction(rt, "TypeError")
-                         .callAsConstructor(rt, jsi::String::createFromUtf8(rt, message));
+[[noreturn]] void ThrowJsError(jsi::Runtime& rt, const char* type, const std::string& message) {
+  jsi::Value error =
+      rt.global().getPropertyAsFunction(rt, type).callAsConstructor(rt, jsi::String::createFromUtf8(rt, message));
   throw jsi::JSError(rt, std::move(error));
+}
+
+[[noreturn]] void ThrowTypeError(jsi::Runtime& rt, const std::string& message) {
+  ThrowJsError(rt, "TypeError", message);
 }
 
 struct Bytes {
@@ -140,6 +144,7 @@ Bytes BytesArg(jsi::Runtime& rt, const jsi::Value* args, size_t count, size_t in
   const std::string message = std::string(name) + " must be a Uint8Array";
   if (index >= count || !args[index].isObject()) ThrowTypeError(rt, message);
   jsi::Object view = args[index].getObject(rt);
+  if (!view.instanceOf(rt, rt.global().getPropertyAsFunction(rt, "Uint8Array"))) ThrowTypeError(rt, message);
   jsi::Value buffer = view.getProperty(rt, "buffer");
   jsi::Value offset = view.getProperty(rt, "byteOffset");
   jsi::Value length = view.getProperty(rt, "byteLength");
@@ -181,7 +186,7 @@ bool BoolArg(const jsi::Value* args, size_t count, size_t index) {
 size_t LimitArg(jsi::Runtime& rt, const jsi::Value* args, size_t count, size_t index, const char* name) {
   if (index >= count || !args[index].isNumber()) ThrowTypeError(rt, std::string(name) + " must be a number");
   double d = args[index].getNumber();
-  if (std::isnan(d) || d < 0) ThrowTypeError(rt, std::string(name) + " must be a non-negative number");
+  if (std::isnan(d) || d < 0) ThrowJsError(rt, "RangeError", std::string(name) + " must be a non-negative number");
   if (std::isinf(d) || d >= static_cast<double>(SIZE_MAX)) return SIZE_MAX;
   return static_cast<size_t>(d);
 }
@@ -352,12 +357,17 @@ jsi::Value MakeCStream(jsi::Runtime& rt, KodespireZstdModule& module, const jsi:
                           std::vector<uint8_t> chunk = Copy(BytesArg(rt, args, count, 0, "chunk"));
                           int mode = IntArg(rt, args, count, 1, "mode");
                           state->Acquire(rt);
-                          return RunAsync(
-                              rt, promises, invoker,
-                              [state, chunk = std::move(chunk), mode](zjs_buf* out, const char** detail) {
-                                return zjs_cstream_push(state->context, DataOrNull(chunk), chunk.size(), mode, out, detail);
-                              },
-                              [state] { state->Release(); });
+                          try {
+                            return RunAsync(
+                                rt, promises, invoker,
+                                [state, chunk = std::move(chunk), mode](zjs_buf* out, const char** detail) {
+                                  return zjs_cstream_push(state->context, DataOrNull(chunk), chunk.size(), mode, out, detail);
+                                },
+                                [state] { state->Release(); });
+                          } catch (...) {
+                            state->Release();
+                            throw;
+                          }
                         });
   };
   // close(): frees the context now, or once an in-flight push finishes
@@ -404,12 +414,17 @@ jsi::Value MakeDStream(jsi::Runtime& rt, KodespireZstdModule& module, const jsi:
                         [state, promises, invoker](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args, size_t count) {
                           std::vector<uint8_t> chunk = Copy(BytesArg(rt, args, count, 0, "chunk"));
                           state->Acquire(rt);
-                          return RunAsync(
-                              rt, promises, invoker,
-                              [state, chunk = std::move(chunk)](zjs_buf* out, const char** detail) {
-                                return zjs_dstream_push(state->context, DataOrNull(chunk), chunk.size(), out, detail);
-                              },
-                              [state] { state->Release(); });
+                          try {
+                            return RunAsync(
+                                rt, promises, invoker,
+                                [state, chunk = std::move(chunk)](zjs_buf* out, const char** detail) {
+                                  return zjs_dstream_push(state->context, DataOrNull(chunk), chunk.size(), out, detail);
+                                },
+                                [state] { state->Release(); });
+                          } catch (...) {
+                            state->Release();
+                            throw;
+                          }
                         });
   };
   // finish(): throws if the input ended inside a frame

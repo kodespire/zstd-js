@@ -1,6 +1,6 @@
 {
   "name": "@kodespire/zstd-js",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Zstandard compression for Node.js, Bun, Deno, browsers, edge runtimes and React Native. Native bindings to the official facebook/zstd library with a WebAssembly fallback.",
   "keywords": [
     "zstd",
@@ -101,7 +101,7 @@
     "node-gyp-build": "^4.8.4"
   },
   "peerDependencies": {
-    "react-native": ">=0.84"
+    "react-native": "*"
   },
   "peerDependenciesMeta": {
     "react-native": {
