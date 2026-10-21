@@ -2,7 +2,7 @@
 // package, so it must carry the podspec, android/, cpp/ and every C source those
 // builds compile, and nothing else of the repo (the example app, build output).
 import { execFileSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -59,6 +59,14 @@ describe('npm package contents', () => {
     }
     expect(files).not.toContain('binding.gyp');
     expect(files).not.toContain('csrc/addon.cc');
+  });
+
+  it('accepts any react-native version as a peer', () => {
+    // npm treats "*" as always satisfied. A range such as ">=0.84" made installs fail
+    // (ERESOLVE) next to older or prerelease React Native, even for web-only use.
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+    expect(pkg.peerDependencies).toEqual({ 'react-native': '*' });
+    expect(pkg.peerDependenciesMeta).toEqual({ 'react-native': { optional: true } });
   });
 
   it('keeps the React Native sources small', () => {
